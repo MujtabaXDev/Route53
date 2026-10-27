@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Route 53 Lab</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: #121820;
+    --line: #223041;
+    --text: #e6edf3;
+    --muted: #8b9bb0;
+    --ok: #3ddc97;
+    --bad: #ff5c6c;
+    --accent: hsl(200 90% 60%);
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: var(--sans); line-height: 1.5;
+    background-image: radial-gradient(1200px 500px at 80% -10%, color-mix(in srgb, var(--accent) 18%, transparent), transparent);
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+  header h1 { margin: 0; font-size: 18px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .host { font-family: var(--mono); font-size: 14px; color: var(--accent); }
+
+  .hero {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+    padding: 28px; position: relative; overflow: hidden;
+  }
+  .hero::before {
+    content: ""; position: absolute; inset: 0 auto 0 0; width: 6px; background: var(--accent);
+  }
+  .eyebrow { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .region { font-family: var(--mono); font-size: clamp(32px, 8vw, 64px); font-weight: 700; margin: 6px 0 18px; color: var(--accent); word-break: break-all; }
+  .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+  .meta div { background: #0e141b; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .meta dt { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+  .meta dd { margin: 2px 0 0; font-family: var(--mono); font-size: 14px; word-break: break-all; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+  .card h2 { margin: 0 0 12px; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+
+  .status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .pill { font-family: var(--mono); font-weight: 700; font-size: 13px; padding: 4px 12px; border-radius: 999px; border: 1px solid; }
+  .pill.up { color: var(--ok); border-color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+  .pill.down { color: var(--bad); border-color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+  .pill.wait { color: var(--muted); border-color: var(--line); }
+  .stat { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+
+  .bars { display: grid; gap: 8px; margin-bottom: 14px; }
+  .bar-row { display: grid; grid-template-columns: 110px 1fr 44px; gap: 8px; align-items: center; font-family: var(--mono); font-size: 12px; }
+  .bar-track { height: 10px; background: #0e141b; border-radius: 99px; overflow: hidden; border: 1px solid var(--line); }
+  .bar-fill { height: 100%; border-radius: 99px; transition: width .3s; }
+  .bar-label { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .log { list-style: none; margin: 0; padding: 0; font-family: var(--mono); font-size: 12px; max-height: 210px; overflow: auto; }
+  .log li { padding: 5px 0; border-top: 1px solid var(--line); color: var(--muted); }
+  .log li:first-child { border-top: 0; }
+  .log .t { color: #5b6b80; margin-right: 8px; }
+  .log .ev-switch { color: #ffd166; }
+  .log .ev-bad { color: var(--bad); }
+  .log .ev-ok { color: var(--ok); }
+
+  pre { margin: 0 0 10px; padding: 10px 12px; background: #0e141b; border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; font-family: var(--mono); font-size: 12px; color: #c9d6e4; }
+  .hint { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+  .note { font-size: 12px; color: var(--muted); margin-top: 18px; text-align: center; }
+  .preview-banner { display: none; background: #2a2410; border: 1px solid #6b5a1a; color: #ffd166; padding: 8px 12px; border-radius: 10px; font-size: 13px; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="preview" class="preview-banner">Preview mode: opened as a local file, so the data below is simulated. Deploy it behind nginx to see real values.</div>
+
+  <header>
+    <h1>Route 53 Lab</h1>
+    <span class="host" id="host">…</span>
+  </header>
+
+  <section class="hero" id="hero">
+    <div class="eyebrow">This request was served by</div>
+    <div class="region" id="region">…</div>
+    <dl class="meta">
+      <div><dt>Availability zone</dt><dd id="az">…</dd></div>
+      <div><dt>Instance</dt><dd id="instance">…</dd></div>
+      <div><dt>Server hostname</dt><dd id="srvhost">…</dd></div>
+      <div><dt>Page loaded</dt><dd id="loaded">…</dd></div>
+    </dl>
+  </section>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Failover watcher</h2>
+      <div class="status">
+        <span class="pill wait" id="pill">WAITING</span>
+        <span class="stat" id="latency">latency: –</span>
+        <span class="stat" id="polls">polls: 0</span>
+      </div>
+      <div class="bars" id="bars"></div>
+      <ul class="log" id="log"></ul>
+    </section>
+
+    <section class="card">
+      <h2>Try it from your terminal</h2>
+      <p class="hint">See what DNS is returning and how long it's cached:</p>
+      <pre id="cmd1"></pre>
+      <p class="hint">Follow the full delegation path:</p>
+      <pre id="cmd2"></pre>
+      <p class="hint">Ask a specific resolver, bypassing your local cache:</p>
+      <pre id="cmd3"></pre>
+      <p class="hint">Simulate an outage on this server, then watch the watcher switch regions after the TTL expires:</p>
+      <pre>sudo mv /usr/share/nginx/html/health.txt /usr/share/nginx/html/health.off
+# restore later:
+sudo mv /usr/share/nginx/html/health.off /usr/share/nginx/html/health.txt</pre>
+    </section>
+  </div>
+
+  <p class="note">The watcher polls <code>/whoami.json</code> every 3 seconds. Your browser and resolver cache DNS, so a switch appears only after the record's TTL expires.</p>
+</div>
+
+<script>
+(function () {
+  var POLL_MS = 3000, TIMEOUT_MS = 2500, MAX_LOG = 40;
+  var isPreview = location.protocol === 'file:';
+  var host = location.hostname || 'localhost';
+
+  var els = {};
+  ['host','region','az','instance','srvhost','loaded','pill','latency','polls','bars','log','cmd1','cmd2','cmd3','hero','preview']
+    .forEach(function (id) { els[id] = document.getElementById(id); });
+
+  els.host.textContent = host;
+  els.loaded.textContent = new Date().toLocaleTimeString();
+  els.cmd1.textContent = 'dig ' + host + '\ndig +short ' + host;
+  els.cmd2.textContent = 'dig +trace ' + host;
+  els.cmd3.textContent = 'dig @8.8.8.8 ' + host + '\ndig @1.1.1.1 ' + host;
+  if (isPreview) els.preview.style.display = 'block';
+
+  function hueFor(str) {
+    var h = 0;
+    for (var i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) % 360;
+    return h;
+  }
+  function colorFor(region) { return 'hsl(' + hueFor(region) + ' 85% 62%)'; }
+
+  var state = { polls: 0, lastRegion: null, lastOk: null, tally: {} };
+
+  function log(kind, msg) {
+    var li = document.createElement('li');
+    var t = document.createElement('span');
+    t.className = 't';
+    t.textContent = new Date().toLocaleTimeString();
+    var m = document.createElement('span');
+    m.className = kind;
+    m.textContent = msg;
+    li.appendChild(t); li.appendChild(m);
+    els.log.insertBefore(li, els.log.firstChild);
+    while (els.log.children.length > MAX_LOG) els.log.removeChild(els.log.lastChild);
+  }
+
+  function renderBars() {
+    var total = 0, k;
+    for (k in state.tally) total += state.tally[k];
+    els.bars.textContent = '';
+    Object.keys(state.tally).sort().forEach(function (r) {
+      var pct = total ? Math.round(state.tally[r] / total * 100) : 0;
+      var row = document.createElement('div'); row.className = 'bar-row';
+      var lab = document.createElement('span'); lab.className = 'bar-label'; lab.textContent = r;
+      var track = document.createElement('div'); track.className = 'bar-track';
+      var fill = document.createElement('div'); fill.className = 'bar-fill';
+      fill.style.width = pct + '%'; fill.style.background = colorFor(r);
+      track.appendChild(fill);
+      var num = document.createElement('span'); num.textContent = pct + '%';
+      row.appendChild(lab); row.appendChild(track); row.appendChild(num);
+      els.bars.appendChild(row);
+    });
+  }
+
+  function showIdentity(d) {
+    els.region.textContent = d.region || 'unknown';
+    els.az.textContent = d.az || '–';
+    els.instance.textContent = d.instanceId || '–';
+    els.srvhost.textContent = d.hostname || '–';
+    var c = colorFor(d.region || 'unknown');
+    document.documentElement.style.setProperty('--accent', c);
+  }
+
+  function fetchWhoami() {
+    if (isPreview) {
+      return new Promise(function (resolve) {
+        setTimeout(function () {
+          resolve({ ok: true, ms: 20 + Math.round(Math.random() * 40),
+            data: { region: 'local-preview', az: 'preview-1a', instanceId: 'i-0preview000', hostname: 'localhost' } });
+        }, 30);
+      });
+    }
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, TIMEOUT_MS);
+    var start = performance.now();
+    return fetch('/whoami.json?_=' + Date.now(), { cache: 'no-store', signal: ctrl.signal })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (d) {
+        return { ok: true, ms: Math.round(performance.now() - start), data: d };
+      })
+      .catch(function (e) {
+        return { ok: false, error: e && e.name === 'AbortError' ? 'timeout' : String((e && e.message) || e) };
+      })
+      .then(function (res) { clearTimeout(timer); return res; });
+  }
+
+  function poll() {
+    fetchWhoami().then(function (res) {
+      state.polls++;
+      els.polls.textContent = 'polls: ' + state.polls;
+
+      if (res.ok) {
+        var region = res.data.region || 'unknown';
+        els.pill.className = 'pill up'; els.pill.textContent = 'UP';
+        els.latency.textContent = 'latency: ' + res.ms + ' ms';
+        state.tally[region] = (state.tally[region] || 0) + 1;
+
+        if (state.lastRegion === null) {
+          log('ev-ok', 'Connected to ' + region);
+          showIdentity(res.data);
+        } else if (region !== state.lastRegion) {
+          log('ev-switch', 'Switched: ' + state.lastRegion + ' → ' + region);
+          showIdentity(res.data);
+        } else if (state.lastOk === false) {
+          log('ev-ok', 'Recovered, still ' + region);
+        }
+        state.lastRegion = region;
+        state.lastOk = true;
+      } else {
+        els.pill.className = 'pill down'; els.pill.textContent = 'DOWN';
+        els.latency.textContent = 'latency: –';
+        if (state.lastOk !== false) log('ev-bad', 'Request failed (' + res.error + ')');
+        state.lastOk = false;
+      }
+      renderBars();
+    });
+  }
+
+  poll();
+  setInterval(poll, POLL_MS);
+})();
+</script>
+</body>
+</html>
